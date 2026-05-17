@@ -10,15 +10,24 @@ export async function GET(req: NextRequest) {
 
   const conversationId = req.nextUrl.searchParams.get("conversationId");
   const pageToken = req.nextUrl.searchParams.get("pageToken") || session.accessToken;
+  const cursor = req.nextUrl.searchParams.get("cursor");
 
   if (!conversationId) return Response.json({ error: "conversationId required" }, { status: 400 });
 
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/${conversationId}?fields=messages{id,message,from,created_time}&access_token=${pageToken}`
-    );
+    let url = `https://graph.facebook.com/v19.0/${conversationId}/messages?fields=id,message,from,created_time&access_token=${pageToken}`;
+    if (cursor) {
+      url += `&after=${cursor}`;
+    }
+
+    const res = await fetch(url);
     const data = await res.json();
-    return Response.json(data);
+    
+    // Wrap data to match existing frontend expectations
+    return Response.json({
+      id: conversationId,
+      messages: data
+    });
   } catch (e: any) {
     return Response.json({ error: e.message }, { status: 500 });
   }

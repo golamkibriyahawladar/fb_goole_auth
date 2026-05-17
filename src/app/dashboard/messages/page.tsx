@@ -27,6 +27,8 @@ export default function MessagesPage() {
   const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastEventTs = useRef(0);
@@ -62,12 +64,32 @@ export default function MessagesPage() {
   const loadThread = useCallback(async (conv: Conversation) => {
     setActiveConv(conv);
     setLoadingThread(true);
+    setNextCursor(null);
     const token = selectedPage?.access_token || "";
     const res = await fetch(`/api/fb/thread?conversationId=${conv.id}&pageToken=${token}`);
     const data = await res.json();
-    if (data.messages?.data) setMessages(data.messages.data.reverse());
+    if (data.messages?.data) {
+      setMessages(data.messages.data.reverse());
+      setNextCursor(data.messages?.paging?.cursors?.after || null);
+    }
     setLoadingThread(false);
   }, [selectedPage]);
+
+  // Load more previous messages
+  const loadMoreMessages = async () => {
+    if (!activeConv || !selectedPage || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    const token = selectedPage.access_token || "";
+    const res = await fetch(`/api/fb/thread?conversationId=${activeConv.id}&pageToken=${token}&cursor=${nextCursor}`);
+    const data = await res.json();
+    
+    if (data.messages?.data) {
+      const olderMessages = data.messages.data.reverse();
+      setMessages(prev => [...olderMessages, ...prev]);
+      setNextCursor(data.messages?.paging?.cursors?.after || null);
+    }
+    setLoadingMore(false);
+  };
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -187,7 +209,20 @@ export default function MessagesPage() {
               ) : messages.length === 0 ? (
                 <div className="empty-state"><p>No messages</p></div>
               ) : (
-                messages.map((msg) => {
+                <>
+                  {nextCursor && (
+                    <div style={{ textAlign: "center", marginBottom: "1rem" }}>
+                      <button 
+                        className="btn" 
+                        onClick={loadMoreMessages} 
+                        disabled={loadingMore}
+                        style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem", background: "rgba(255,255,255,0.1)", borderRadius: 12, border: "none", color: "#fff", cursor: "pointer" }}
+                      >
+                        {loadingMore ? "Loading..." : "Load previous messages"}
+                      </button>
+                    </div>
+                  )}
+                  {messages.map((msg) => {
                   const isPage = msg.from?.id === selectedPage?.id;
                   return (
                     <div key={msg.id} className={`bubble-row ${isPage ? "right" : ""}`}>
@@ -204,7 +239,8 @@ export default function MessagesPage() {
                       </div>
                     </div>
                   );
-                })
+                })}
+                </>
               )}
               <div ref={messagesEndRef} />
             </div>

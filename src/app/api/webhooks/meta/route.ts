@@ -18,34 +18,43 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const entry = body?.entry?.[0];
-    if (!entry) return new Response("ok");
+    console.log("META WEBHOOK PAYLOAD:", JSON.stringify(body));
+    
+    const entries = body?.entry || [];
+    
+    for (const entry of entries) {
+      // Messages
+      if (entry.messaging) {
+        for (const messaging of entry.messaging) {
+          if (messaging.message) {
+            pushEvent("fb_message", {
+              senderId: messaging.sender?.id,
+              message: messaging.message?.text,
+              timestamp: messaging.timestamp,
+            });
+          }
+        }
+      }
 
-    // Messages
-    const messaging = entry?.messaging?.[0];
-    if (messaging?.message) {
-      pushEvent("fb_message", {
-        senderId: messaging.sender?.id,
-        message: messaging.message?.text,
-        timestamp: messaging.timestamp,
-      });
-    }
-
-    // Comments / Feed
-    const changes = entry?.changes || [];
-    for (const change of changes) {
-      if (change.field === "feed" && change.value?.item === "comment") {
-        pushEvent("fb_comment", {
-          commentId: change.value?.comment_id,
-          postId: change.value?.post_id,
-          message: change.value?.message,
-          from: change.value?.from,
-          verb: change.value?.verb,
-          timestamp: change.value?.created_time,
-        });
+      // Comments / Feed
+      if (entry.changes) {
+        for (const change of entry.changes) {
+          if (change.field === "feed" && change.value?.item === "comment") {
+            pushEvent("fb_comment", {
+              commentId: change.value?.comment_id,
+              postId: change.value?.post_id,
+              message: change.value?.message,
+              from: change.value?.from,
+              verb: change.value?.verb,
+              timestamp: change.value?.created_time,
+            });
+          }
+        }
       }
     }
-  } catch (_) {}
+  } catch (err) {
+    console.error("WEBHOOK ERROR:", err);
+  }
 
   return new Response("ok", { status: 200 });
 }
